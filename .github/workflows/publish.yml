@@ -1,0 +1,203 @@
+name: CI & Publish
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday 06:00 UTC: catches toolchain and dependency drift on main
+
+jobs:
+  lint-and-test:
+    name: lint-and-test (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.15']
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins the version; rustup installs it on first use.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # `uv sync` builds the project, which installs the executable into the environment.
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Format check (Python and Rust)
+        run: uv run inv format-check
+
+      - name: Lint (ruff, ty, bandit, clippy)
+        run: uv run inv lint
+
+      # Builds the executable and the extension first, then runs the Rust tests and the Python tests. The
+      # browser tests use the Chrome that GitHub's Ubuntu runners ship, and are skipped where there is none.
+      - name: Test
+        run: uv run inv test
+
+      - name: Verify licenses
+        run: uv run inv verify-licences
+
+  security-audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Rust audit
+        run: cargo audit
+        working-directory: rust
+
+  verify-version:
+    name: Verify tag matches the version everywhere
+    needs: [lint-and-test]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          for FILE in pyproject.toml rust/Cargo.toml rust/python/Cargo.toml; do
+            FILE_VERSION=$(grep '^version' "$FILE" | head -1 | sed 's/version = "//' | sed 's/"//')
+            if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
+              echo "Error: tag v${TAG_VERSION} does not match ${FILE} version ${FILE_VERSION}"
+              exit 1
+            fi
+          done
+          echo "Version check passed: ${TAG_VERSION}"
+
+  build_wheels:
+    name: Build wheels (${{ matrix.target }})
+    needs: [verify-version]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The wheel is built with `bindings = "bin"`, which cannot build the extension module that runs the
+      # program inside the Python interpreter. It is built on its own and staged into the package, where
+      # the wheel's `include` picks it up.
+      - name: Build the extension module
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out ../../extension-dist
+          working-directory: rust/python
+          manylinux: auto
+
+      - name: Stage the extension module
+        shell: python
+        run: |
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          with ZipFile(next(Path("extension-dist").glob("*.whl"))) as wheel:
+              for member in wheel.namelist():
+                  name = Path(member).name
+                  if name.startswith("_rust.") and Path(name).suffix in {".so", ".pyd"}:
+                      Path("src/chartedcode", name).write_bytes(wheel.read(member))
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --profile cli --out dist
+          manylinux: auto
+
+      - name: Check the wheel holds the executable and the extension module
+        shell: python
+        run: |
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          names = ZipFile(next(Path("dist").glob("*.whl"))).namelist()
+          assert any("/scripts/chartedcode" in n for n in names), "executable missing"
+          assert any(
+              Path(n).name.startswith("_rust.") and Path(n).suffix in {".so", ".pyd"} and n.startswith("chartedcode/")
+              for n in names
+          ), "extension missing"
+
+      # Loading is what fails when the extension is linked wrongly, not the file being absent. Only on
+      # runners that can run the target.
+      - name: Run the extension module from the wheel
+        if: contains(fromJSON('["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-apple-darwin"]'), matrix.target)
+        shell: bash
+        run: |
+          python -m venv check-venv
+          if [ -d check-venv/Scripts ]; then PY=check-venv/Scripts/python; else PY=check-venv/bin/python; fi
+          $PY -m pip install --no-index --find-links dist chartedcode
+          mkdir -p check-project && printf 'def f():\n    return g()\n\n\ndef g():\n    return 1\n' > check-project/a.py
+          CHARTEDCODE_INPROC=1 $PY -m chartedcode calls check-project --format json --no-gitignore
+          $PY -m chartedcode --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.target }}
+          path: dist/*.whl
+
+  sdist:
+    name: Source distribution
+    needs: [verify-version]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish:
+    name: Publish to PyPI
+    needs: [build_wheels, sdist]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -1,0 +1,18 @@
+chartedcode is licensed under the MIT License (see LICENSE). The diagrams it writes embed
+the following third-party code, under its own terms:
+
+## elkjs
+
+rust/assets/elk.bundled.js is elkjs 0.11.0, the Eclipse Layout Kernel compiled to JavaScript
+(https://github.com/kieler/elkjs). It is included unmodified, and every HTML diagram that
+chartedcode generates contains a copy of it so that the diagram works offline.
+
+elkjs is licensed under the Eclipse Public License 2.0 (EPL-2.0); the full text is in
+rust/assets/elkjs-LICENSE.md. The corresponding source is available from the repository
+above. The SHA-256 of the bundled file is recorded in rust/assets/elk.bundled.js.sha256 and
+checked by the test suite.
+
+## Rust crates
+
+The executable is built from Rust crates whose licences are listed by `cargo metadata`;
+among them, the Python parser comes from Ruff (https://github.com/astral-sh/ruff, MIT).

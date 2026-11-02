@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>@@TITLE@@ — class diagram</title>
+<style>
+:root{--bg:#fff;--fg:#111827;--muted:#6b7280;--box:#eef2ff;--box-s:#4f46e5;--ext:#f9fafb;--ext-s:#9ca3af;--panel:#f3f4f6;
+--ev-res:#374151;--ev-uni:#b45309;--ev-str:#7c3aed;--ev-ext:#9ca3af}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--box:#1e293b;--box-s:#818cf8;--ext:#0f172a;--ext-s:#64748b;--panel:#1e293b;
+--ev-res:#cbd5e1;--ev-uni:#fbbf24;--ev-str:#a78bfa;--ev-ext:#64748b}}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;padding:8px 16px;background:var(--panel)}
+header h1{font-size:15px;margin:0}header .m{color:var(--muted)}
+button{font:inherit;padding:3px 10px;border:1px solid var(--ext-s);background:var(--bg);color:var(--fg);border-radius:6px;cursor:pointer}
+label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+.leg{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;color:var(--muted);font-size:12px;width:100%}
+.leg b{color:var(--fg);font-weight:600}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
+#v{display:block;width:100%;height:calc(100% - 96px);cursor:grab;touch-action:none}
+@media (max-width:700px){#v{height:calc(100% - 150px)}}
+text{font-family:ui-monospace,Menlo,monospace}
+.dim{opacity:.1}
+</style></head><body>
+<header><h1>@@TITLE@@</h1><span class="m" id="stats"></span>
+<label><input type="checkbox" id="k-inherits" checked> inheritance</label>
+<label><input type="checkbox" id="k-implements" checked> implements (Protocol)</label>
+<label><input type="checkbox" id="k-composes"> has-a (field types)</label>
+<button id="dir">Direction: down</button><button id="fit">Fit</button>
+<div class="leg"><b>Line</b>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="31" y2="5" stroke="var(--fg)" stroke-width="1.4"/><path d="M39 5 31 1 31 9z" fill="var(--bg)" stroke="var(--fg)"/></svg> inherits</span>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="31" y2="5" stroke="var(--fg)" stroke-width="1.4" stroke-dasharray="5 3"/><path d="M39 5 31 1 31 9z" fill="var(--bg)" stroke="var(--fg)"/></svg> implements</span>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="35" y2="5" stroke="var(--fg)" stroke-width="1.4"/><path d="M30 1 36 5 30 9" fill="none" stroke="var(--fg)" stroke-width="1.4"/></svg> has-a</span>
+<b>Evidence</b>
+<span><i class="sw" style="background:var(--ev-res)"></i>resolved: same file or via imports</span>
+<span><i class="sw" style="background:var(--ev-uni)"></i>found only in another source root</span>
+<span><i class="sw" style="background:var(--ev-str)"></i>method names only (signatures unchecked)</span>
+<span><i class="sw" style="background:var(--ev-ext)"></i>external / unresolved</span>
+<span><svg width="34" height="12"><rect x="1" y="1" width="30" height="10" rx="3" fill="var(--ext)" stroke="var(--ext-s)" stroke-dasharray="3 2"/></svg> not in project</span></div></header>
+<svg id="v" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0 12 6 0 12z" fill="var(--bg)" stroke="context-stroke" stroke-width="1.2"/></marker>
+<marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 9 5 1 9" fill="none" stroke="context-stroke" stroke-width="1.4"/></marker></defs>
+<g id="g"></g></svg>
+<script type="application/json" id="data">@@DATA@@</script>
+<script>@@ELK@@</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent);
+const NS='http://www.w3.org/2000/svg',CW=6.7,LH=15,HEAD=34,MAXA=6,MAXM=6;
+let dir='DOWN';
+const el=(n,a={},p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e};
+const clip=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
+function size(n){
+ const ms=n.methods.filter(x=>!x.startsWith('__'));
+ const as=n.attrs.map(a=>a.name+': '+a.type);
+ const cap=(l,m)=>{const s=l.slice(0,m).map(x=>clip(x,34)),r=l.length-s.length;return r>0?[...s,'+'+r+' more']:s};
+ const A=cap(as,MAXA),M=cap(ms.map(x=>x+'()'),MAXM);
+ const w=Math.max(n.name.length*CW*1.1,n.module.length*CW*.9,...A.map(l=>l.length*CW),...M.map(l=>l.length*CW))+24;
+ const comp=l=>l.length?l.length*LH+8:0;
+ return{A,M,w:Math.max(w,70),h:HEAD+comp(A)+comp(M)}}
+const S=new Map(D.nodes.map(n=>[n.id,size(n)]));
+const kinds=['inherits','implements','composes'];
+const on=k=>document.getElementById('k-'+k).checked;
+const col=e=>e.kind==='implements'?'var(--ev-str)':['same-module','import','re-export'].includes(e.evidence)?'var(--ev-res)':e.evidence==='other-root'?'var(--ev-uni)':'var(--ev-ext)';
+const h=(location.hash.match(/kinds=([a-z,]*)/)||[])[1];
+if(h!==undefined)kinds.forEach(k=>document.getElementById('k-'+k).checked=h.split(',').includes(k));
+const elk=new ELK();
+async function render(){
+ const edges=D.edges.filter(e=>on(e.kind));
+ const used=new Set(edges.flatMap(e=>[e.from,e.to]));
+ const nodes=D.nodes.filter(n=>!n.external||used.has(n.id));
+ document.getElementById('stats').textContent=D.nodes.filter(n=>!n.external).length+' classes · '+edges.length+' relationships · '+D.files+' files';
+ // owners/derived point down from bases, ports and owners
+ const src=e=>e.kind==='composes'?e.from:e.to, dst=e=>e.kind==='composes'?e.to:e.from;
+ const g=await elk.layout({id:'root',layoutOptions:{'elk.algorithm':'layered','elk.direction':dir,'elk.spacing.nodeNode':'28','elk.layered.spacing.nodeNodeBetweenLayers':'56','elk.edgeRouting':'ORTHOGONAL','elk.separateConnectedComponents':'true','elk.layered.mergeEdges':'true'},
+  children:nodes.map(n=>({id:n.id,width:S.get(n.id).w,height:S.get(n.id).h})),
+  edges:edges.map((e,i)=>({id:'e'+i,sources:[src(e)],targets:[dst(e)]}))});
+ const G=document.getElementById('g');G.replaceChildren();
+ const E=[];
+ g.edges.forEach((ge,i)=>{const e=edges[i],s=ge.sections[0],pts=[s.startPoint,...(s.bendPoints||[]),s.endPoint];
+  const a={d:'M'+pts.map(p=>p.x+' '+p.y).join('L'),fill:'none',stroke:col(e),'stroke-width':1.5};
+  if(e.kind==='implements')a['stroke-dasharray']='6 4';
+  if(e.kind==='composes')a['marker-end']='url(#open)';else a['marker-start']='url(#tri)';
+  const p=el('path',a,G);p.appendChild(Object.assign(el('title'),{textContent:e.kind+': '+e.from+' → '+e.to+'\nevidence: '+e.evidence+'\n'+e.written}));E.push([p,e])});
+ const NG=new Map();
+ g.children.forEach(c=>{const n=D.nodes.find(x=>x.id===c.id),sz=S.get(c.id),gr=el('g',{transform:`translate(${c.x},${c.y})`},G);NG.set(c.id,gr);el('title',{},gr).textContent=n.file||n.name;
+  el('rect',{width:c.width,height:c.height,rx:5,fill:n.external?'var(--ext)':'var(--box)',stroke:n.external?'var(--ext-s)':'var(--box-s)','stroke-width':1.2,'stroke-dasharray':n.external?'4 3':'none'},gr);
+  el('text',{x:c.width/2,y:n.module?16:21,'text-anchor':'middle','font-size':13,'font-weight':600,fill:'var(--fg)','font-style':n.external?'italic':'normal'},gr).textContent=n.name;
+  if(n.module)el('text',{x:c.width/2,y:29,'text-anchor':'middle','font-size':9.5,fill:'var(--muted)'},gr).textContent=n.module;
+  let y=HEAD;
+  for(const L of [sz.A,sz.M]){if(!L.length)continue;
+   el('line',{x1:0,x2:c.width,y1:y,y2:y,stroke:'var(--box-s)','stroke-width':.8},gr);
+   L.forEach((l,k)=>el('text',{x:10,y:y+14+k*LH,'font-size':11,fill:l.startsWith('+')?'var(--muted)':'var(--fg)'},gr).textContent=l);y+=L.length*LH+8}
+  gr.addEventListener('pointerenter',()=>{const near=new Set([c.id]);E.forEach(([p,e])=>{const hit=e.from===c.id||e.to===c.id;p.classList.toggle('dim',!hit);if(hit){near.add(e.from);near.add(e.to)}});NG.forEach((x,id)=>x.classList.toggle('dim',!near.has(id)))});
+  gr.addEventListener('pointerleave',()=>{E.forEach(([p])=>p.classList.remove('dim'));NG.forEach(x=>x.classList.remove('dim'))})});
+ G.dataset.w=g.width;G.dataset.h=g.height;fit();document.body.dataset.ready='1'}
+const V=document.getElementById('v'),G0=document.getElementById('g');let T={x:0,y:0,k:1};
+const apply=()=>G0.setAttribute('transform',`translate(${T.x},${T.y}) scale(${T.k})`);
+function fit(){const w=+G0.dataset.w+40,h=+G0.dataset.h+40,r=V.getBoundingClientRect();T.k=Math.min(r.width/w,r.height/h,1.5);T.x=(r.width-w*T.k)/2+20*T.k;T.y=(r.height-h*T.k)/2+20*T.k;apply()}
+V.addEventListener('wheel',e=>{e.preventDefault();const r=V.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top,f=Math.exp(-e.deltaY*.0015);
+ T.x=px-(px-T.x)*f;T.y=py-(py-T.y)*f;T.k*=f;apply()},{passive:false});
+let drag=null;V.addEventListener('pointerdown',e=>{drag={x:e.clientX-T.x,y:e.clientY-T.y};V.setPointerCapture(e.pointerId);V.style.cursor='grabbing'});
+V.addEventListener('pointermove',e=>{if(drag){T.x=e.clientX-drag.x;T.y=e.clientY-drag.y;apply()}});
+V.addEventListener('pointerup',()=>{drag=null;V.style.cursor='grab'});
+document.getElementById('fit').onclick=fit;
+document.getElementById('dir').onclick=function(){dir=dir==='DOWN'?'RIGHT':'DOWN';this.textContent='Direction: '+(dir==='DOWN'?'down':'right');render()};
+kinds.forEach(k=>document.getElementById('k-'+k).onchange=render);
+window.addEventListener('resize',fit);
+render();
+</script></body></html>

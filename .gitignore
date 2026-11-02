@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.json
+coverage.lcov
+dist/
+target/
+*.so
+*.pyd
+# the compiled extension is staged into the package by `uv run inv build`
+src/chartedcode/_rust.*
+!src/chartedcode/_rust.pyi
+# generated diagrams
+*.chartedcode.html
+spike

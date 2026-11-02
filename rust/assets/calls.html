@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>@@TITLE@@ — call graph</title>
+<style>
+:root{--bg:#fff;--fg:#111827;--muted:#6b7280;--box:#eef2ff;--box-s:#4f46e5;--ext:#f9fafb;--ext-s:#9ca3af;--panel:#f3f4f6;
+--ev-res:#374151;--ev-uni:#b45309;--ev-str:#7c3aed;--ev-ext:#9ca3af}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--box:#1e293b;--box-s:#818cf8;--ext:#0f172a;--ext-s:#64748b;--panel:#1e293b;
+--ev-res:#cbd5e1;--ev-uni:#fbbf24;--ev-str:#a78bfa;--ev-ext:#64748b}}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+body{display:flex;flex-direction:column}
+header{flex:none;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:8px 16px;background:var(--panel)}
+header h1{font-size:15px;margin:0}header .m{color:var(--muted)}
+button,select{font:inherit;padding:3px 8px;border:1px solid var(--ext-s);background:var(--bg);color:var(--fg);border-radius:6px;cursor:pointer;max-width:230px}
+button:disabled,select:disabled{opacity:.45;cursor:default}
+label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+label:has(:disabled){opacity:.5;cursor:default}
+.leg{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;color:var(--muted);font-size:12px;width:100%}
+.leg b{color:var(--fg);font-weight:600}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
+#hint{flex:none;min-height:30px;line-height:30px;padding:0 16px;color:var(--fg);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--panel)}
+#main{flex:1;min-height:0;display:flex}
+#v{display:block;flex:1;min-width:0;height:100%;cursor:grab;touch-action:none}
+#steps{flex:none;width:310px;box-sizing:border-box;border-left:1px solid var(--panel);overflow:auto;padding:10px 12px;font-size:13px}
+#steps h2{font-size:13px;margin:0 0 4px}
+#steps p{margin:4px 0;color:var(--muted)}
+#steps ol{list-style:none;padding:0;margin:8px 0}
+#steps li{display:flex;gap:8px;align-items:flex-start;margin:2px 0}
+#steps .n{flex:none;min-width:20px;height:20px;line-height:20px;text-align:center;border:1px solid var(--ext-s);border-radius:10px;font-size:11px;font-weight:700;margin-top:3px}
+#steps .lines{display:flex;flex-direction:column;flex:1;min-width:0}
+#steps button.line{text-align:left;background:none;border:0;border-radius:4px;padding:3px 5px;max-width:none;width:100%;white-space:normal}
+#steps button.line:hover,#steps button.line:focus-visible,#steps button.line.sel{background:var(--panel)}
+#steps button.line small{display:block;color:var(--muted);font-size:11px}
+@media (max-width:800px){#main{flex-direction:column}#steps{width:auto;height:34%;border-left:0;border-top:1px solid var(--panel)}}
+text{font-family:ui-monospace,Menlo,monospace}
+.dim{opacity:.12}
+.badge{pointer-events:none}
+.focused rect{stroke:var(--fg);stroke-width:2.6}
+.armed rect{stroke:var(--ev-uni);stroke-width:2.6;stroke-dasharray:5 3}
+.hl rect{stroke:var(--ev-uni);stroke-width:2.8}
+path.hl{stroke-width:3.6!important}
+</style></head><body>
+<header><h1>@@TITLE@@</h1><span class="m" id="stats"></span>
+<label>View <select id="view"><option value="graph">Call graph</option><option value="exec">Execution flow (DAG)</option><option value="acyclic">Acyclic (cycles collapsed)</option></select></label>
+<label>Granularity <select id="gran"><option value="function">function</option><option value="class">class</option><option value="module">module</option></select></label>
+<label><input type="checkbox" id="k-calls" checked> calls</label>
+<label><input type="checkbox" id="k-constructs" checked> constructs</label>
+<label><input type="checkbox" id="k-dispatches" checked> dispatches</label>
+<label><input type="checkbox" id="k-ext"> external</label>
+<label title="Show the order of each call (1, 2, 3...) on the arrows. Only for the call graph at function granularity."><input type="checkbox" id="k-steps" checked> step numbers</label>
+<label title="Calls the tool could not follow to a function in this project, for example a method on a variable with no declared type, or on a library object. They are never drawn as edges. Tick to show how many each box has."><input type="checkbox" id="k-untraced"> untraced calls</label>
+<label title="Include private functions, classes and modules: any name starting with a single underscore (__dunder__ names are never hidden). Calls that pass through a hidden function are not shown."><input type="checkbox" id="k-private"> private (_names)</label>
+<label>Focus <select id="focus"></select></label>
+<label title="Only list functions that make at least this many traced calls. The function currently in focus is always listed.">list <select id="mincalls"><option value="0">all functions</option><option value="3">≥ 3 calls</option><option value="5">≥ 5 calls</option><option value="8">≥ 8 calls</option><option value="12">≥ 12 calls</option></select></label>
+<label><select id="fdir"><option value="both">callers + callees</option><option value="out">callees</option><option value="in">callers</option></select></label>
+<label>depth <select id="fdepth"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>6</option><option value="99">all</option></select></label>
+<button id="clear" disabled>Clear focus</button>
+<button id="dir">Direction: right</button><button id="fit">Fit</button>
+<div class="leg"><b>Line</b>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="35" y2="5" stroke="var(--fg)" stroke-width="1.5"/><path d="M30 1 36 5 30 9" fill="none" stroke="var(--fg)" stroke-width="1.4"/></svg> calls / passes a callback</span>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="35" y2="5" stroke="var(--fg)" stroke-width="1.5" stroke-dasharray="2 3"/><path d="M30 1 36 5 30 9" fill="none" stroke="var(--fg)" stroke-width="1.4"/></svg> constructs</span>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="35" y2="5" stroke="var(--fg)" stroke-width="1.5" stroke-dasharray="6 4"/><path d="M30 1 36 5 30 9" fill="none" stroke="var(--fg)" stroke-width="1.4"/></svg> dispatches to implementers</span>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="35" y2="5" stroke="var(--muted)" stroke-width="1.2"/><path d="M30 1 36 5 30 9" fill="none" stroke="var(--muted)" stroke-width="1.2"/></svg> next call in the same function (execution flow)</span>
+<b>Evidence</b>
+<span><i class="sw" style="background:var(--ev-res)"></i>resolved by name, import, self or super</span>
+<span><i class="sw" style="background:var(--ev-uni)"></i>inferred from a declared type</span>
+<span><i class="sw" style="background:var(--ev-str)"></i>method names only</span>
+<span><i class="sw" style="background:var(--ev-ext)"></i>external</span></div></header>
+<div id="hint" role="status" aria-live="polite"></div>
+<div id="main">
+<svg id="v" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 9 5 1 9" fill="none" stroke="context-stroke" stroke-width="1.4"/></marker></defs>
+<g id="g"></g></svg>
+<aside id="steps" aria-label="Order of calls"><h2>Order of calls</h2><p id="steps-sub"></p><ol id="steps-list"></ol><p id="steps-note"></p></aside>
+</div>
+<script type="application/json" id="config">@@CONFIG@@</script>
+<script type="application/json" id="data">@@DATA@@</script>
+<script>@@ELK@@</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent);
+const NS='http://www.w3.org/2000/svg',CW=6.7,LH=15,MAXEXEC=400;
+const defaultDir=v=>v==='exec'?'DOWN':'RIGHT';
+let dirUser=false,dir='RIGHT',focus='',armed=null,sticky=null,lastBase=null,lastMap=null,execFid='',autoPicked=false,sceneNote='',gran=D.functions.length<=90?'function':'class',view='graph';
+let curE=[],curNG=new Map();
+const el=(n,a={},p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e};
+const $=id=>document.getElementById(id);
+const clip=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
+const FN=new Map(D.functions.map(f=>[f.id,f]));
+const PFX=(()=>{const ms=[...new Set(D.functions.map(f=>f.module))].map(m=>m.split('.'));if(!ms.length)return '';let p=ms[0].slice(0,-1);
+ for(const m of ms){let i=0;while(i<p.length&&i<m.length-1&&p[i]===m[i])i++;p=p.slice(0,i)}return p.length?p.join('.')+'.':''})();
+const short=m=>PFX&&m.startsWith(PFX)?m.slice(PFX.length):m;
+const clsName=f=>f.class?f.name.split('.')[0]:null;
+const isPriv=s=>s.startsWith('_')&&!(s.startsWith('__')&&s.endsWith('__'));
+for(const f of D.functions)f.private=f.name.split('.').some(isPriv)||f.module.split('.').some(isPriv);
+const N_PRIVATE=D.functions.filter(f=>f.private).length;
+const hidden=id=>{const f=FN.get(id);return !!f&&f.private&&!$('k-private').checked};
+const callCount=id=>(STEPS.get(id)||new Map()).size;
+const fname=id=>id.startsWith('ext:')?id.slice(4):(FN.get(id)||{name:id}).name;
+// ---- call order data
+const STEPS=new Map();
+for(const c of D.calls){if(c.kind==='dispatches'||!c.steps||!c.steps.length)continue;
+ let m=STEPS.get(c.from);if(!m){m=new Map();STEPS.set(c.from,m)}
+ for(const s of c.steps){if(!m.has(s))m.set(s,[]);m.get(s).push(c)}}
+const stepList=fid=>[...(STEPS.get(fid)||new Map()).entries()].sort((a,b)=>a[0]-b[0]);
+const DISP=new Map();for(const c of D.calls)if(c.kind==='dispatches'){if(!DISP.has(c.from))DISP.set(c.from,[]);DISP.get(c.from).push(c.to)}
+const HAS_CALLER=new Set(D.calls.filter(c=>c.kind!=='dispatches').map(c=>c.to));
+const cat=ev=>['same-module','import','re-export','self','inherited','super'].includes(ev)?0:['field-type','param-type','local-type','other-root'].includes(ev)?1:ev==='method-names'?2:3;
+const col=c=>['var(--ev-res)','var(--ev-uni)','var(--ev-str)','var(--ev-ext)'][c];
+const evWord=ev=>['resolved','inferred from a declared type','method names only','external'][cat(ev)];
+const kindWord={calls:'calls',constructs:'constructs',passes:'passes callback to',dispatches:'dispatches to'};
+const cls=k=>k==='dispatches'?'dispatches':k==='constructs'?'constructs':'calls';
+const kindsOn=()=>({calls:$('k-calls').checked,constructs:$('k-constructs').checked,dispatches:$('k-dispatches').checked});
+// ---- graph builders
+function groupOf(id,g){
+ if(id.startsWith('ext:'))return{key:id,label:id.slice(4),sub:'',ext:true,n:0,unres:0};
+ const f=FN.get(id);
+ if(g==='function')return{key:id,label:f.name,sub:short(f.module),ext:false,syn:f.synthetic,unres:f.unresolved,n:1,tip:f.unresolved_examples};
+ if(g==='class')return f.class?{key:f.class,label:clsName(f),sub:short(f.module),ext:false,unres:0,n:0}:{key:'mod:'+f.file,label:short(f.module)+' (functions)',sub:'',ext:false,unres:0,n:0};
+ return{key:'mod:'+f.file,label:short(f.module),sub:'',ext:false,unres:0,n:0}}
+function build(g){
+ const showExt=$('k-ext').checked,on=kindsOn();
+ const nodes=new Map(),edges=new Map();
+ const add=id=>{const x=groupOf(id,g);let n=nodes.get(x.key);if(!n){n=x;nodes.set(x.key,n)}return n};
+ if(g!=='function')D.functions.forEach(f=>{if(hidden(f.id))return;const n=add(f.id);n.n++;n.unres+=f.unresolved});
+ else D.functions.forEach(f=>{if(!hidden(f.id))add(f.id)});
+ D.calls.forEach(c=>{
+  if(!on[cls(c.kind)])return; if(!showExt&&c.to.startsWith('ext:'))return;
+  if(hidden(c.from)||hidden(c.to))return;
+  const a=add(c.from),b=add(c.to); if(g!=='function'&&a.key===b.key)return;
+  const k=a.key+'>'+b.key+'>'+cls(c.kind);let e=edges.get(k);
+  if(!e){e={from:a.key,to:b.key,kind:cls(c.kind),n:0,worst:0,items:[],steps:new Set()};edges.set(k,e)}
+  e.n+=c.count;e.worst=Math.max(e.worst,cat(c.evidence));
+  if(g==='function'&&c.steps)c.steps.forEach(s=>e.steps.add(s));
+  if(e.items.length<6)e.items.push(`${c.kind} ${c.from.split('::').pop()} → ${c.to.split('::').pop()} [${c.evidence}] ×${c.count}${c.steps&&c.steps.length?' · step '+c.steps.join(', '):''}`)});
+ return{nodes,edges:[...edges.values()]}}
+// Strongly connected components (iterative Tarjan); each cycle becomes one node so the result is a DAG.
+function collapse(G){
+ const idx=new Map(),low=new Map(),on=new Set(),stack=[],comps=[];let i=0;
+ const adj=new Map([...G.nodes.keys()].map(k=>[k,[]]));G.edges.forEach(e=>adj.get(e.from).push(e.to));
+ for(const root of G.nodes.keys()){if(idx.has(root))continue;
+  idx.set(root,i);low.set(root,i);i++;stack.push(root);on.add(root);const work=[[root,0]];
+  while(work.length){const top=work[work.length-1],v=top[0],a=adj.get(v);
+   if(top[1]<a.length){const w=a[top[1]++];
+    if(!idx.has(w)){idx.set(w,i);low.set(w,i);i++;stack.push(w);on.add(w);work.push([w,0])}
+    else if(on.has(w))low.set(v,Math.min(low.get(v),idx.get(w)))}
+   else{work.pop();
+    if(work.length){const p=work[work.length-1][0];low.set(p,Math.min(low.get(p),low.get(v)))}
+    if(low.get(v)===idx.get(v)){const members=[];let w;do{w=stack.pop();on.delete(w);members.push(w)}while(w!==v);comps.push(members)}}}}
+ const map=new Map(),nodes=new Map();let cycles=0;
+ for(const m of comps){
+  if(m.length===1){map.set(m[0],m[0]);continue}
+  const key='scc:'+m.slice().sort()[0];m.forEach(k=>map.set(k,key));cycles++;
+  const ns=m.map(k=>G.nodes.get(k)).sort((a,b)=>a.label.localeCompare(b.label));
+  nodes.set(key,{key,label:'cycle of '+m.length,sub:clip(ns.slice(0,3).map(n=>n.label).join(', ')+(ns.length>3?', …':''),52),ext:false,cycle:true,
+   n:ns.reduce((s,n)=>s+n.n,0),unres:ns.reduce((s,n)=>s+n.unres,0),tip:ns.map(n=>n.label),members:ns.map(n=>n.label)})}
+ const out=new Map();
+ for(const [k,n] of G.nodes){const nk=map.get(k);out.set(nk,nodes.get(nk)||n)}
+ const edges=new Map();let dropped=0;
+ for(const e of G.edges){const a=map.get(e.from),b=map.get(e.to);if(a===b){dropped++;continue}
+  const k=a+'>'+b+'>'+e.kind;let x=edges.get(k);
+  if(!x){x={from:a,to:b,kind:e.kind,n:0,worst:0,items:[],steps:new Set()};edges.set(k,x)}
+  x.n+=e.n;x.worst=Math.max(x.worst,e.worst);e.items.forEach(t=>{if(x.items.length<6)x.items.push(t)})}
+ return{nodes:out,edges:[...edges.values()],map,cycles,dropped}}
+function neighbourhood(G,fk){
+ if(!fk||!G.nodes.has(fk))return G;
+ const depth=+$('fdepth').value,mode=$('fdir').value;
+ const reach=down=>{const seen=new Set([fk]);let fr=[fk];
+  for(let d=0;d<depth&&fr.length;d++){const nx=[];
+   for(const e of G.edges){const [a,b]=down?[e.from,e.to]:[e.to,e.from];
+    if(fr.includes(a)&&!seen.has(b)){seen.add(b);nx.push(b)}}
+   fr=nx}
+  return seen};
+ const keep=new Set([...(mode!=='in'?reach(true):[]),...(mode!=='out'?reach(false):[]),fk]);
+ return{nodes:new Map([...G.nodes].filter(([k])=>keep.has(k))),edges:G.edges.filter(e=>keep.has(e.from)&&keep.has(e.to)),map:G.map,cycles:G.cycles}}
+// Depth-first pre-order along calls in step order, so callees are placed top-to-bottom in the order they are called.
+function orderKeys(G,fk){
+ const out=new Map();G.nodes.forEach((_,k)=>out.set(k,[]));
+ G.edges.forEach(e=>{const s=e.steps&&e.steps.size?Math.min(...e.steps):1e9;out.get(e.from).push([s,e.to])});
+ out.forEach(a=>a.sort((x,y)=>x[0]-y[0]||(x[1]<y[1]?-1:x[1]>y[1]?1:0)));
+ const hasIn=new Set(G.edges.map(e=>e.to)),all=[...G.nodes.keys()].sort();
+ const roots=[...(fk&&G.nodes.has(fk)?[fk]:[]),...all.filter(k=>!hasIn.has(k)),...all];
+ const seen=new Set(),order=[];
+ for(const r of roots){if(seen.has(r))continue;seen.add(r);order.push(r);const st=[[r,0]];
+  while(st.length){const t=st[st.length-1],a=out.get(t[0]);
+   if(t[1]<a.length){const w=a[t[1]++][1];if(!seen.has(w)){seen.add(w);order.push(w);st.push([w,0])}}else st.pop()}}
+ return order}
+function linesOf(n,g){const lines=[];
+ if(n.cycle)lines.push(n.members.length+(g==='function'?' functions':g==='class'?' classes':' modules'));
+ else if(g!=='function'&&!n.ext)lines.push(n.n+(n.n===1?' function':' functions'));
+ if($('k-untraced').checked&&n.unres)lines.push(n.unres+(n.unres===1?' untraced call':' untraced calls'));
+ return lines}
+function toScene(G,g,fk){
+ const nodes=new Map(),ordered=g==='function'&&view==='graph';
+ const order=ordered?orderKeys(G,fk):[...G.nodes.keys()];
+ for(const k of order){const n=G.nodes.get(k);
+  nodes.set(k,{key:k,label:n.label,sub:n.sub,lines:linesOf(n,g),dashed:n.ext||n.syn,tip:(n.cycle?'members:\n'+n.tip.join('\n'):n.label+(n.sub?'\n'+n.sub:''))+(n.tip&&!n.cycle&&n.tip.length?'\nuntraced calls: '+n.tip.join(', '):'')+(n.syn?'\nno __init__ defined: implicit constructor':''),focused:k===fk})}
+ const pos=new Map(order.map((k,i)=>[k,i]));
+ const first=e=>e.steps&&e.steps.size?Math.min(...e.steps):1e9;
+ const edges=G.edges.slice().sort((a,b)=>pos.get(a.from)-pos.get(b.from)||first(a)-first(b)).map(e=>({from:e.from,to:e.to,kind:e.kind,worst:e.worst,n:e.n,items:e.items,steps:[...e.steps].sort((a,b)=>a-b)}));
+ return{nodes,edges,ordered,badges:g==='function'&&view==='graph',stats:G.nodes.size+' nodes · '+G.edges.reduce((s,e)=>s+e.n,0)+' call sites drawn'+(G.cycles?' · '+G.cycles+' cycle'+(G.cycles===1?'':'s')+' collapsed':'')}}
+// ---- execution flow: each call site becomes a step, chained in order; a callee's own steps hang off the step that enters it
+function pickExecFocus(){
+ let best=null,bestN=-1;
+ for(const f of D.functions){if(f.synthetic||HAS_CALLER.has(f.id)||hidden(f.id))continue;const n=(STEPS.get(f.id)||new Map()).size;
+  if(n>bestN||(n===bestN&&f.id<best)){best=f.id;bestN=n}}
+ return best||(D.functions[0]&&D.functions[0].id)||''}
+function execScene(f0,N){
+ const on=kindsOn(),showExt=$('k-ext').checked;
+ const visible=(fid)=>stepList(fid).map(([s,es])=>[s,es.filter(c=>on[cls(c.kind)]&&(showExt||!c.to.startsWith('ext:'))&&!hidden(c.to))]).filter(([,es])=>es.length);
+ const dispOf=fid=>on.dispatches?(DISP.get(fid)||[]).filter(g=>!hidden(g)):[];
+ const depth=new Map([[f0,0]]),q=[f0];
+ for(let i=0;i<q.length;i++){const f=q[i],d=depth.get(f);if(d>=N)continue;
+  const next=[...visible(f).flatMap(([,es])=>es.filter(c=>!c.to.startsWith('ext:')).map(c=>c.to)),...dispOf(f)];
+  for(const g of next)if(!depth.has(g)){depth.set(g,d+1);q.push(g)}}
+ const expanded=new Set([...depth].filter(([,d])=>d<N).map(([f])=>f));
+ // back edges (recursion) are marked on the step and not drawn, which keeps the result acyclic
+ const state=new Map(),back=new Set();
+ const dfs=f=>{state.set(f,1);
+  const outs=[...visible(f).flatMap(([s,es])=>es.filter(c=>!c.to.startsWith('ext:')).map(c=>[`${f}#${s}>${c.to}`,c.to])),...dispOf(f).map(g=>[`${f}>${g}`,g])];
+  for(const [key,g] of outs){if(!depth.has(g))continue;
+   if(state.get(g)===1)back.add(key);else if(!state.has(g)&&expanded.has(g))dfs(g)}
+  state.set(f,2)};
+ dfs(f0);
+ const nodes=new Map(),edges=[];
+ const entry=fid=>{const k='e:'+fid;if(!nodes.has(k)){const f=FN.get(fid);nodes.set(k,{key:k,label:f?f.name:fname(fid),sub:f?short(f.module):'',lines:[],dashed:!!(f&&f.synthetic),entry:true,focused:fid===f0,tip:f?f.name+'\n'+short(f.module):fid})}return k};
+ const ext=name=>{const k='x:'+name;if(!nodes.has(k))nodes.set(k,{key:k,label:name,sub:'',lines:[],dashed:true,tip:'external: '+name});return k};
+ for(const fid of [...depth.keys()]){
+  const ek=entry(fid);if(!expanded.has(fid))continue;
+  let prev=ek;
+  for(const [s,es0] of visible(fid)){
+   const es=es0.slice().sort((a,b)=>(a.kind==='passes')-(b.kind==='passes'));
+   const sk=`s:${fid}#${s}`,p=es[0],rec=es.some(c=>back.has(`${fid}#${s}>${c.to}`));
+   const tn=c=>fname(c.to).replace('.__init__','()');
+   nodes.set(sk,{key:sk,label:`${s}. ${tn(p)}`,sub:`${kindWord[p.kind]||p.kind} · ${evWord(p.evidence)}${rec?' · recursive, not expanded':''}`,
+    lines:es.slice(1,3).map(c=>`+ ${kindWord[c.kind]||c.kind} ${tn(c)}`),step:true,tip:es.map(c=>`${c.kind} ${c.to.split('::').pop()} [${c.evidence}]  ${c.written}`).join('\n')});
+   edges.push({from:prev,to:sk,kind:'then',worst:0,n:1,items:[`next call in ${fname(fid)}`],steps:[]});
+   for(const c of es){
+    if(c.to.startsWith('ext:')){edges.push({from:sk,to:ext(fname(c.to)),kind:cls(c.kind),worst:3,n:1,items:[`${c.kind} ${fname(c.to)}`],steps:[]});continue}
+    if(back.has(`${fid}#${s}>${c.to}`))continue;
+    edges.push({from:sk,to:entry(c.to),kind:cls(c.kind),worst:cat(c.evidence),n:1,items:[`${c.kind} ${fname(c.to)} [${c.evidence}]`],steps:[]})}
+   prev=sk}
+  for(const g of dispOf(fid)){if(!depth.has(g)||back.has(`${fid}>${g}`))continue;
+   edges.push({from:ek,to:entry(g),kind:'dispatches',worst:2,n:1,items:[`${fname(fid)} may run ${fname(g)}`],steps:[]})}}
+ return{nodes,edges,ordered:true,badges:false,count:nodes.size,
+  stats:nodes.size+' boxes · '+f0.split('::').pop()+' to depth '+N}}
+function execBuild(){
+ let f=FN.has(focus)&&!hidden(focus)?focus:'',note='';
+ if(!f){f=pickExecFocus();autoPicked=true;focus=f}
+ if(autoPicked&&focus===f)note=`Showing the flow of “${fname(f)}”: nobody calls it and it makes the most calls. Choose another in Focus.`;
+ execFid=f;
+ const want=+$('fdepth').value;let N=want,s=execScene(f,N);
+ while(s.count>MAXEXEC&&N>1){N--;s=execScene(f,N)}
+ if(N<want)note=(note?note+' ':'')+`Depth reduced from ${want} to ${N} to keep the diagram under ${MAXEXEC} boxes.`;
+ sceneNote=note;return s}
+// ---- state, hints, panel
+const label=id=>{const n=lastBase&&lastBase.nodes.get(id);return n?n.label:fname(id)};
+function updateHint(){
+ let t;
+ if(armed&&armed.type==='node'){const id=armed.id;t=id===focus?`Click “${label(id)}” again to clear the focus.`:`Click “${label(id)}” again to focus on it.`}
+ else if(armed&&armed.type==='clear')t=focus?'Click empty space again to clear the focus.':'No focus is set, so there is nothing to clear.';
+ else t=focus?`Focused on “${label(focus)}”. Click empty space twice to clear it, or click another box twice to move the focus.`:'No focus. Click a box to select it, then click it again to focus on it.';
+ if(sceneNote)t+=' '+sceneNote;
+ $('hint').textContent=t;$('clear').disabled=!focus;
+ document.querySelectorAll('#g g[data-id]').forEach(g=>g.classList.toggle('armed',!!armed&&armed.type==='node'&&armed.id===g.dataset.id))}
+function disarm(){armed=null;updateHint()}
+function syncControls(){
+ $('gran').disabled=view==='exec';$('fdir').disabled=view==='exec';
+ $('gran').value=view==='exec'?'function':gran;
+ $('k-steps').disabled=!(view==='graph'&&gran==='function');
+ $('mincalls').disabled=!(view==='exec'||gran==='function')}
+const keyOf=id=>view==='acyclic'&&lastMap?(lastMap.get(id)||id):id;
+function applyHl(spec){
+ const hit=new Set(),nodes=new Set(spec?spec.nodes:[]);
+ curE.forEach(([p,e])=>{const h=!!spec&&spec.edges.some(x=>x.from===e.from&&(x.to===undefined||x.to===e.to));
+  p.classList.toggle('dim',!!spec&&!h);p.classList.toggle('hl',h);if(h){nodes.add(e.from);nodes.add(e.to)}});
+ curNG.forEach((g,id)=>{g.classList.toggle('dim',!!spec&&!nodes.has(id));g.classList.toggle('hl',!!spec&&spec.nodes.includes(id))})}
+function specFor(fid,s,c){
+ if(view==='exec'){const k=`s:${fid}#${s}`;return{nodes:[k],edges:[{from:k}]}}
+ return{nodes:[keyOf(c.to)],edges:[{from:keyOf(fid),to:keyOf(c.to)}]}}
+function renderSteps(){
+ const sub=$('steps-sub'),list=$('steps-list'),note=$('steps-note');list.replaceChildren();
+ const fid=view==='exec'?execFid:focus,f=FN.get(fid);
+ if(!f){sub.textContent=gran!=='function'?'Call order is recorded per function. Set granularity to “function” and focus one (click its box twice).':'Focus a function (click its box twice) to list its calls in the order they are written.';note.textContent='';return}
+ sub.textContent=f.name+' · '+short(f.module);
+ let hiddenCalls=0;
+ const rows=stepList(fid).map(([s,es])=>[s,es.filter(c=>{const h=hidden(c.to);if(h)hiddenCalls++;return !h})]).filter(([,es])=>es.length);
+ rows.forEach(([s,es])=>{
+  const li=document.createElement('li'),n=document.createElement('span'),ls=document.createElement('div');
+  n.className='n';n.textContent=s;ls.className='lines';li.append(n,ls);
+  for(const c of es.slice().sort((a,b)=>(a.kind==='passes')-(b.kind==='passes'))){
+   const b=document.createElement('button'),sm=document.createElement('small');b.className='line';b.type='button';
+   b.append(`${kindWord[c.kind]||c.kind} ${fname(c.to).replace('.__init__','()')}`,sm);sm.textContent=evWord(c.evidence)+' · '+c.written;
+   const spec=specFor(fid,s,c),key=fid+'#'+s+'>'+c.to;
+   b.onmouseenter=b.onfocus=()=>applyHl(spec);b.onmouseleave=b.onblur=()=>applyHl(sticky&&sticky.spec);
+   b.onclick=()=>{const was=sticky&&sticky.key===key;list.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));sticky=was?null:{key,spec};if(!was)b.classList.add('sel');applyHl(sticky&&sticky.spec)};
+   ls.appendChild(b)}
+  list.appendChild(li)});
+ const ex=(f.unresolved_examples||[]);
+ note.textContent=(rows.length?'':'No calls to project functions were traced in this function. ')+(hiddenCalls?`${hiddenCalls} call${hiddenCalls===1?'':'s'} to private functions hidden (tick “private (_names)” to show them; step numbers keep their gaps). `:'')+(f.unresolved
+  ?`${f.unresolved} call${f.unresolved===1?'':'s'} not traced (not numbered, not drawn): ${ex.join(', ')}${(f.unresolved_distinct||0)>ex.length?', …':''}. These are calls on a variable whose type is not declared, or on a library object.`
+  :'Every call in this function was either traced or is a builtin.')}
+// ---- layout and drawing
+const elk=new ELK();
+const edgeStyle=e=>({stroke:e.kind==='then'?'var(--muted)':col(e.worst),width:e.kind==='then'?1.3:Math.min(1.3+Math.log2(e.n)*.6,4),dash:e.kind==='constructs'?'2 3':e.kind==='dispatches'?'6 4':'none'});
+function badge(parent,pts,text,color){
+ const a=pts[pts.length-2]||pts[0],b=pts[pts.length-1],dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy)||1,d=Math.min(22,len/2);
+ const x=b.x-dx/len*d,y=b.y-dy/len*d,w=text.length*6+10,g=el('g',{class:'badge'},parent);
+ el('rect',{x:x-w/2,y:y-7,width:w,height:14,rx:7,fill:'var(--bg)',stroke:color,'stroke-width':1},g);
+ el('text',{x,y:y+3.5,'text-anchor':'middle','font-size':9.5,'font-weight':700,fill:'var(--fg)'},g).textContent=text}
+async function render(){
+ document.body.dataset.ready='';armed=null;sticky=null;sceneNote='';
+ syncControls();
+ const g=view==='exec'?'function':gran;
+ const base=build(g);lastBase=base;lastMap=null;
+ const sel=$('focus');
+ const fnLevel=g==='function',minC=fnLevel?+$('mincalls').value:0;
+ const opt=(value,text)=>Object.assign(document.createElement('option'),{value,textContent:text});
+ const cands=[...base.nodes.values()].filter(n=>!n.ext);
+ const listed=cands.filter(n=>!fnLevel||callCount(n.key)>=minC||n.key===focus);
+ listed.sort((a,b)=>(view==='exec'?callCount(b.key)-callCount(a.key):0)||a.label.localeCompare(b.label));
+ sel.replaceChildren(opt('',fnLevel?`(none) — ${listed.length} of ${cands.length} listed`:'(none)'));
+ listed.forEach(n=>sel.appendChild(opt(n.key,n.label+(n.sub?'  · '+n.sub:'')+(fnLevel?`  · ${callCount(n.key)} calls`:''))));
+ let S;
+ if(view==='exec'){S=execBuild();sel.value=focus}
+ else{
+  sel.value=base.nodes.has(focus)?focus:'';focus=sel.value;
+  let G=base;if(view==='acyclic'){G=collapse(base);lastMap=G.map;const dr=G.dropped?` ${G.dropped} self-call edge${G.dropped===1?'':'s'} dropped.`:'';sceneNote=G.cycles?`Collapsed ${G.cycles} cycle${G.cycles===1?'':'s'} of functions that call each other.${dr}`:`No cycles at this granularity, so this view is the same as the call graph.${dr}`}
+  const fk=focus?(view==='acyclic'?(lastMap.get(focus)||focus):focus):'';
+  S=toScene(neighbourhood(G,fk),g,fk)}
+ $('stats').textContent=S.stats+(N_PRIVATE&&!$('k-private').checked?' · '+N_PRIVATE+' private functions hidden':'')+' · '+D.call_stats.unresolved+' calls not traced (whole project) · '+D.files+' files';
+ const sz=n=>{const w=Math.max(n.label.length*CW*1.1,(n.sub||'').length*CW*.9,...n.lines.map(l=>l.length*CW))+24;return{w:Math.max(w,80),h:34+(n.lines.length?n.lines.length*LH+6:0)}};
+ const opts={'elk.algorithm':'layered','elk.direction':dir,'elk.spacing.nodeNode':'24','elk.layered.spacing.nodeNodeBetweenLayers':'70','elk.edgeRouting':'ORTHOGONAL','elk.separateConnectedComponents':'true','elk.layered.mergeEdges':'true'};
+ if(S.ordered){opts['elk.layered.considerModelOrder.strategy']='NODES_AND_EDGES';opts['elk.layered.crossingMinimization.forceNodeModelOrder']='true'}
+ const sizes=new Map([...S.nodes].map(([k,n])=>[k,sz(n)]));
+ const r=await elk.layout({id:'root',layoutOptions:opts,children:[...S.nodes.keys()].map(k=>({id:k,width:sizes.get(k).w,height:sizes.get(k).h})),edges:S.edges.map((e,i)=>({id:'e'+i,sources:[e.from],targets:[e.to]}))});
+ const gg=$('g');gg.replaceChildren();curE=[];curNG=new Map();
+ r.edges.forEach((ge,i)=>{const e=S.edges[i],s=ge.sections[0],pts=[s.startPoint,...(s.bendPoints||[]),s.endPoint],st=edgeStyle(e);
+  const a={d:'M'+pts.map(p=>p.x+' '+p.y).join('L'),fill:'none',stroke:st.stroke,'stroke-width':st.width,'marker-end':'url(#open)','data-from':e.from,'data-to':e.to};
+  if(st.dash!=='none')a['stroke-dasharray']=st.dash;
+  const p=el('path',a,gg);p.appendChild(Object.assign(el('title'),{textContent:S.nodes.get(e.from).label+' → '+S.nodes.get(e.to).label+(e.n>1||S.badges?' ('+e.n+' call site'+(e.n===1?'':'s')+')':'')+'\n'+e.items.join('\n')}));curE.push([p,e]);
+  if(S.badges&&$('k-steps').checked&&e.steps.length)badge(gg,pts,e.steps.length<=3?e.steps.join(','):e.steps[0]+'…'+e.steps[e.steps.length-1],st.stroke)});
+ r.children.forEach(c=>{const n=S.nodes.get(c.id),gr=el('g',{transform:`translate(${c.x},${c.y})`,'data-id':c.id},gg);curNG.set(c.id,gr);
+  if(n.focused)gr.classList.add('focused');
+  el('rect',{width:c.width,height:c.height,rx:n.step?10:5,fill:n.step?'var(--bg)':n.dashed?'var(--ext)':'var(--box)',stroke:n.dashed?'var(--ext-s)':'var(--box-s)','stroke-width':n.entry?1.8:1.2,'stroke-dasharray':n.dashed?'4 3':'none'},gr);
+  el('title',{},gr).textContent=n.tip||n.label;
+  el('text',{x:c.width/2,y:n.sub?16:21,'text-anchor':'middle','font-size':12.5,'font-weight':n.step?500:600,fill:'var(--fg)','font-style':n.dashed?'italic':'normal'},gr).textContent=clip(n.label,46);
+  if(n.sub)el('text',{x:c.width/2,y:29,'text-anchor':'middle','font-size':9.5,fill:'var(--muted)'},gr).textContent=clip(n.sub,60);
+  n.lines.forEach((l,k)=>el('text',{x:c.width/2,y:46+k*LH,'text-anchor':'middle','font-size':10.5,fill:'var(--muted)'},gr).textContent=clip(l,50));
+  gr.addEventListener('pointerenter',()=>applyHl({nodes:[c.id],edges:[{from:c.id},...curE.filter(([,e])=>e.to===c.id).map(([,e])=>({from:e.from,to:c.id}))]}));
+  gr.addEventListener('pointerleave',()=>applyHl(sticky&&sticky.spec))});
+ gg.dataset.w=r.width;gg.dataset.h=r.height;fit();updateHint();renderSteps();document.body.dataset.ready='1'}
+const V=$('v'),G0=$('g');let T={x:0,y:0,k:1};
+const apply=()=>G0.setAttribute('transform',`translate(${T.x},${T.y}) scale(${T.k})`);
+function fit(){const w=+G0.dataset.w+40,h=+G0.dataset.h+40,r=V.getBoundingClientRect();T.k=Math.min(r.width/w,r.height/h,1.5);T.x=(r.width-w*T.k)/2+20*T.k;T.y=(r.height-h*T.k)/2+20*T.k;apply()}
+V.addEventListener('wheel',e=>{e.preventDefault();const r=V.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top,f=Math.exp(-e.deltaY*.0015);T.x=px-(px-T.x)*f;T.y=py-(py-T.y)*f;T.k*=f;apply()},{passive:false});
+// A press that moves more than a few pixels pans; one that does not is a click.
+let down=null;
+V.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY,t:e.target,ox:T.x,oy:T.y,moved:false};try{V.setPointerCapture(e.pointerId)}catch(_){}});
+V.addEventListener('pointermove',e=>{if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;
+ if(!down.moved&&Math.hypot(dx,dy)<=4)return;down.moved=true;V.style.cursor='grabbing';T.x=down.ox+dx;T.y=down.oy+dy;apply()});
+V.addEventListener('pointerup',()=>{const d=down;down=null;V.style.cursor='grab';if(d&&!d.moved)onClick(d.t);else if(d&&d.moved)disarm()});
+function setFocus(id){focus=id;autoPicked=false;$('focus').value=id;render()}
+function onClick(t){
+ const g=t.closest&&t.closest('g[data-id]');
+ if(g){const raw=g.dataset.id;
+  // execution-flow boxes stand for a function or a call step; only function entries can take focus
+  const id=raw.startsWith('e:')?raw.slice(2):raw.startsWith('s:')||raw.startsWith('x:')?'':raw;
+  if(!id)return disarm();
+  if(armed&&armed.type==='node'&&armed.id===id)return setFocus(id===focus?'':id);
+  armed={type:'node',id};return updateHint()}
+ if(t===V||t===G0){
+  if(armed&&armed.type==='clear'){const had=focus;armed=null;if(had)return setFocus('');return updateHint()}
+  armed={type:'clear'};return updateHint()}
+ disarm()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')disarm()});
+$('fit').onclick=fit;
+$('clear').onclick=()=>setFocus('');
+const showDir=()=>{$('dir').textContent='Direction: '+(dir==='DOWN'?'down':'right')};
+$('dir').onclick=function(){dirUser=true;dir=dir==='DOWN'?'RIGHT':'DOWN';showDir();render()};
+['k-calls','k-constructs','k-dispatches','k-ext','k-untraced','k-steps','k-private','mincalls','fdir','fdepth'].forEach(i=>$(i).onchange=render);
+$('gran').onchange=()=>{gran=$('gran').value;focus='';render()};
+$('view').onchange=()=>{view=$('view').value;if(!dirUser){dir=defaultDir(view);showDir()}render()};
+$('focus').onchange=()=>setFocus($('focus').value);
+const h=new URLSearchParams(location.hash.slice(1));
+if(JSON.parse($('config').textContent).showPrivate)$('k-private').checked=true;
+if(h.get('gran'))gran=h.get('gran');
+if(h.get('view'))view=h.get('view');
+if(h.get('ext')==='1')$('k-ext').checked=true;
+if(h.get('untraced')==='1')$('k-untraced').checked=true;
+if(h.get('steps')==='0')$('k-steps').checked=false;
+if(h.get('private')==='1')$('k-private').checked=true;
+if(h.get('mincalls'))$('mincalls').value=h.get('mincalls');
+if(h.get('depth'))$('fdepth').value=h.get('depth');
+if(h.get('focus'))focus=h.get('focus');
+if(h.get('dir')){dirUser=true;dir=h.get('dir')==='down'?'DOWN':'RIGHT'}else dir=defaultDir(view);
+showDir();
+$('gran').value=gran;$('view').value=view;
+window.__cg={D,STEPS,build,collapse,execScene,orderKeys,get state(){return{view,gran,focus,execFid,curE,curNG}}};
+window.addEventListener('resize',fit);
+render();
+</script></body></html>

@@ -1,0 +1,130 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "chartedcode"
+version = "0.1.0"
+description = "Diagrams for Python projects: class, call and control-flow diagrams, drawn as self-contained HTML by a small deterministic Rust binary."
+keywords = ["uml", "diagram", "call-graph", "control-flow", "class-diagram", "static-analysis", "documentation"]
+readme = "README.md"
+authors = [
+    { name = "William Martin" }
+]
+license = "MIT"
+license-files = ["LICENSE", "NOTICE", "rust/assets/elkjs-LICENSE.md"]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/w-martin/chartedcode"
+Repository = "https://github.com/w-martin/chartedcode"
+"Issue Tracker" = "https://github.com/w-martin/chartedcode/issues"
+
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+python-source = "src"
+# The wheel carries the Rust `chartedcode` executable (installed as a script) next to the Python package.
+bindings = "bin"
+module-name = "chartedcode"
+# Bytecode from a development tree does not belong in a wheel.
+exclude = ["**/__pycache__/**", "**/*.py[cod]"]
+# `chartedcode-py`: a Python script installed beside the executable, which maturin cannot declare as an entry point.
+data = "rust/python-data"
+include = [
+    { path = "src/chartedcode/_rust.*", format = "wheel" },
+    { path = "rust/python/**/*", format = "sdist" },
+    { path = "rust/assets/**/*", format = "sdist" },
+    { path = "LICENSE", format = "sdist" },
+    { path = "NOTICE", format = "sdist" },
+]
+
+[tool.pytest.ini_options]
+addopts = "--cov=src --cov-report=term-missing --cov-report=json --cov-branch --cov-fail-under=100"
+testpaths = ["tests"]
+markers = ["ui: drives a headless Chrome; skipped when none is installed"]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+fix = true
+# Not project code: the research spike, fixture projects whose exact text the tests depend on, and build output.
+extend-exclude = ["spike", "rust/tests/fixtures", "rust/target"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D203",   # Conflicts with D211
+    "D212",   # Conflicts with D213
+    "COM812", # Conflicts with ruff formatter
+    "CPY001", # Project does not use copyright header notices
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "SLF001", "S603", "S607"]
+"tasks.py" = ["T201"]
+# The one module that starts the Rust executable. Its command is always the installed `chartedcode`
+# executable, never user-supplied text.
+"src/chartedcode/_binary.py" = ["S603", "S606"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "invoke>=3.0.3",
+    "maturin>=1.15.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.2",
+    "trustedlicenses>=0.3.4",
+    "ty>=0.0.91",
+]
+
+[tool.bandit]
+# bandit cannot skip one rule for one file, so the module that starts the Rust executable (B404, B603, B606;
+# see `_binary.py`) is excluded whole. It does nothing else.
+exclude_dirs = ["tests", "src/chartedcode/_binary.py"]
+
+[tool.trustedlicenses]
+allowed-categories = ["Permissive", "Public Domain", "Copyleft Limited"]
+
+[tool.ty.terminal]
+output-format = "concise"
+
+[tool.ty.src]
+# The same directories ruff skips: the spike, fixture projects that are broken on purpose, and build output.
+exclude = ["spike", "rust/tests/fixtures", "rust/target"]

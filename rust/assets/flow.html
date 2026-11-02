@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>@@TITLE@@ — control flow</title>
+<style>
+:root{--bg:#fff;--fg:#111827;--muted:#6b7280;--box:#eef2ff;--box-s:#4f46e5;--ext:#f9fafb;--ext-s:#9ca3af;--panel:#f3f4f6;
+--e-norm:#374151;--e-loop:#b45309;--e-exc:#7c3aed}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--box:#1e293b;--box-s:#818cf8;--ext:#0f172a;--ext-s:#64748b;--panel:#1e293b;
+--e-norm:#cbd5e1;--e-loop:#fbbf24;--e-exc:#a78bfa}}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+body{display:flex;flex-direction:column}
+header{flex:none;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:8px 16px;background:var(--panel)}
+header h1{font-size:15px;margin:0}header .m{color:var(--muted)}
+button,select{font:inherit;padding:3px 8px;border:1px solid var(--ext-s);background:var(--bg);color:var(--fg);border-radius:6px;cursor:pointer;max-width:420px}
+button:disabled,select:disabled{opacity:.45;cursor:default}
+label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+.leg{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;color:var(--muted);font-size:12px;width:100%}
+.leg b{color:var(--fg);font-weight:600}
+#hint{flex:none;min-height:30px;line-height:30px;padding:0 16px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--panel)}
+#v{display:block;flex:1;min-height:0;width:100%;cursor:grab;touch-action:none}
+text{font-family:ui-monospace,Menlo,monospace}
+.dim{opacity:.14}
+.armed rect.box{stroke:var(--e-loop);stroke-width:2.6;stroke-dasharray:5 3}
+[data-callee]{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
+.armedcall{fill:var(--e-loop)!important;font-weight:700}
+</style></head><body>
+<header><h1>@@TITLE@@</h1><span class="m" id="stats" title="Complexity is the number of decision points plus one: if/elif, loops, except handlers, case arms and asserts. Boolean operators and conditional expressions are not counted."></span>
+<label>Function <select id="fn"></select></label>
+<label title="Only list functions with at least this complexity. The function being shown is always listed.">list <select id="minc"><option value="0">all functions</option><option value="3">complexity ≥ 3</option><option value="5">complexity ≥ 5</option><option value="8">complexity ≥ 8</option><option value="12">complexity ≥ 12</option></select></label>
+<label title="Include private functions, classes and modules: any name starting with a single underscore (__dunder__ names are never hidden)."><input type="checkbox" id="k-private"> private (_names)</label>
+<button id="back" disabled>Back</button>
+<button id="dir">Direction: down</button><button id="fit">Fit</button>
+<div class="leg"><b>Edges</b>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="35" y2="5" stroke="var(--e-norm)" stroke-width="1.5"/><path d="M30 1 36 5 30 9" fill="none" stroke="var(--e-norm)" stroke-width="1.4"/></svg> normal flow (label says when)</span>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="35" y2="5" stroke="var(--e-loop)" stroke-width="1.5"/><path d="M30 1 36 5 30 9" fill="none" stroke="var(--e-loop)" stroke-width="1.4"/></svg> loop, break or continue</span>
+<span><svg width="40" height="10"><line x1="0" y1="5" x2="35" y2="5" stroke="var(--e-exc)" stroke-width="1.5" stroke-dasharray="6 4"/><path d="M30 1 36 5 30 9" fill="none" stroke="var(--e-exc)" stroke-width="1.4"/></svg> exception, raise, return or failed assert</span>
+<b>Blocks</b>
+<span><svg width="30" height="12"><rect x="1" y="1" width="28" height="10" rx="3" fill="var(--box)" stroke="var(--box-s)" stroke-width="2"/></svg> branch or loop test</span>
+<span><svg width="30" height="12"><rect x="1" y="1" width="28" height="10" rx="3" fill="var(--ext)" stroke="var(--ext-s)" stroke-dasharray="3 2"/></svg> unreachable code</span>
+<span>Numbers before calls are the call graph's step numbers.</span></div></header>
+<div id="hint" role="status" aria-live="polite"></div>
+<svg id="v" xmlns="http://www.w3.org/2000/svg"><defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 9 5 1 9" fill="none" stroke="context-stroke" stroke-width="1.4"/></marker></defs>
+<g id="g"></g></svg>
+<script type="application/json" id="config">@@CONFIG@@</script>
+<script type="application/json" id="data">@@DATA@@</script>
+<script>@@ELK@@</script>
+<script>
+const D=JSON.parse(document.getElementById('data').textContent);
+const CONFIG=JSON.parse(document.getElementById('config').textContent);
+const NS='http://www.w3.org/2000/svg',CW=6.7,LH=15,PAD=10;
+const $=id=>document.getElementById(id);
+const el=(n,a={},p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e};
+const clip=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
+const FN=new Map(D.functions.map(f=>[f.id,f]));
+const FLOW=new Map(D.cfgs.map(g=>[g.function,g]));
+const isPriv=s=>s.startsWith('_')&&!(s.startsWith('__')&&s.endsWith('__'));
+for(const f of D.functions)f.private=f.name.split('.').some(isPriv)||f.module.split('.').some(isPriv);
+const hidden=id=>{const f=FN.get(id);return !!f&&f.private&&!$('k-private').checked};
+const fname=id=>id.startsWith('ext:')?id.slice(4):(FN.get(id)||{name:id}).name.replace('.__init__','()');
+let dir='DOWN',fid='',armed=null,history=[];
+const KINDWORD={calls:'',constructs:'constructs ',passes:'passes ',dispatches:'dispatches to '};
+// ---- what to show in a block
+function blockRows(b){
+ const rows=[];
+ if(b.unreachable)rows.push({t:'(unreachable)',c:'muted'});
+ for(const l of b.lines)rows.push({t:(l.text?String(l.line).padStart(4,' ')+'  '+l.text:'line '+l.line),c:'line'});
+ const calls=b.calls.filter(c=>c.status!=='ignored');
+ if(calls.length&&b.lines.length)rows.push({t:'',c:'rule'});
+ for(const c of calls){
+  if(c.status==='untraced'){rows.push({t:c.text+' — not traced',c:'muted'});continue}
+  const [first,...rest]=c.targets;
+  const target=first?(KINDWORD[first.kind]||'')+fname(first.to):'';
+  rows.push({t:`${c.step}. ${c.text}${target?' → '+target:''}`,c:'call',callee:first&&FLOW.has(first.to)?first.to:null});
+  for(const r of rest.slice(0,2))rows.push({t:`    + ${KINDWORD[r.kind]||''}${fname(r.to)}`,c:'call',callee:FLOW.has(r.to)?r.to:null})}
+ return rows}
+const edgeStyle=label=>{
+ if(/^(loop|break|continue)/.test(label))return{stroke:'var(--e-loop)',dash:'none'};
+ if(/^(exception|raise|return|assertion)/.test(label))return{stroke:'var(--e-exc)',dash:'6 4'};
+ return{stroke:'var(--e-norm)',dash:label==='false'||label==='no more items'||label==='no case matches'?'4 3':'none'}};
+// ---- state and hint
+function updateHint(){
+ const g=FLOW.get(fid);let t;
+ if(armed)t=`Click “${fname(armed)}” again to open its flow.`;
+ else if(!g)t='No function to show.';
+ else{const n=g.blocks.filter(b=>b.unreachable).length;
+  t=`Showing “${fname(fid)}”. Hover a block to follow its edges; click a call that has a flow twice to open it.`+(n?` ${n} block${n===1?' is':'s are'} unreachable.`:'')}
+ $('hint').textContent=t;$('back').disabled=!history.length;
+ document.querySelectorAll('#g [data-callee]').forEach(x=>x.classList.toggle('armedcall',x.dataset.callee===armed))}
+function disarm(){armed=null;updateHint()}
+function fillList(){
+ const minC=+$('minc').value,sel=$('fn');
+ const all=D.cfgs.filter(g=>!hidden(g.function));
+ const listed=all.filter(g=>g.complexity>=minC||g.function===fid).sort((a,b)=>b.complexity-a.complexity||fname(a.function).localeCompare(fname(b.function)));
+ sel.replaceChildren();
+ for(const g of listed){const f=FN.get(g.function),o=document.createElement('option');o.value=g.function;
+  o.textContent=`${fname(g.function)}  · ${f.module}  · complexity ${g.complexity}`;sel.appendChild(o)}
+ if(!fid&&listed.length)fid=listed[0].function;
+ sel.value=fid;
+ return{listed:listed.length,total:all.length}}
+// ---- layout and drawing
+const elk=new ELK();
+async function render(){
+ document.body.dataset.ready='';armed=null;
+ const info=fillList(),g=FLOW.get(fid);
+ const gg=$('g');gg.replaceChildren();
+ if(!g){$('stats').textContent=info.total+' functions';updateHint();document.body.dataset.ready='1';return}
+ const nb=g.blocks.length-2;$('stats').textContent=`${nb} block${nb===1?'':'s'} · ${g.edges.length} edge${g.edges.length===1?'':'s'} · complexity ${g.complexity} · ${info.listed} of ${info.total} functions listed`;
+ const rows=new Map(g.blocks.map(b=>[b.id,b.kind==='entry'||b.kind==='exit'?[]:blockRows(b)]));
+ const size=b=>{const r=rows.get(b.id);
+  if(b.kind==='entry'||b.kind==='exit')return{w:64,h:26};
+  if(!r.length)return{w:16,h:16};
+  return{w:Math.max(80,...r.map(x=>x.t.length*CW))+2*PAD,h:Math.max(28,r.length*LH+12)}};
+ const sz=new Map(g.blocks.map(b=>[b.id,size(b)]));
+ const lab=e=>e.label?[{text:e.label,width:e.label.length*CW+10,height:14}]:[];
+ const r=await elk.layout({id:'root',layoutOptions:{'elk.algorithm':'layered','elk.direction':dir,'elk.spacing.nodeNode':'36','elk.layered.spacing.nodeNodeBetweenLayers':'48','elk.edgeRouting':'ORTHOGONAL','elk.layered.considerModelOrder.strategy':'NODES_AND_EDGES','elk.edgeLabels.inline':'false'},
+  children:g.blocks.map(b=>({id:String(b.id),width:sz.get(b.id).w,height:sz.get(b.id).h})),
+  edges:g.edges.map((e,i)=>({id:'e'+i,sources:[String(e.from)],targets:[String(e.to)],labels:lab(e)}))});
+ const E=[],NG=new Map();
+ r.edges.forEach((ge,i)=>{const e=g.edges[i],s=ge.sections[0],pts=[s.startPoint,...(s.bendPoints||[]),s.endPoint],st=edgeStyle(e.label);
+  const a={d:'M'+pts.map(p=>p.x+' '+p.y).join('L'),fill:'none',stroke:st.stroke,'stroke-width':1.5,'marker-end':'url(#arrow)','data-from':String(e.from),'data-to':String(e.to)};
+  if(st.dash!=='none')a['stroke-dasharray']=st.dash;
+  const p=el('path',a,gg);el('title',{},p).textContent=(e.label||'next')+': block '+e.from+' → block '+e.to;E.push([p,e]);
+  const l=(ge.labels||[])[0];
+  if(l){const w=l.width,t=el('g',{class:'edgelabel','data-from':String(e.from),'data-to':String(e.to)},gg);
+   el('rect',{x:l.x,y:l.y,width:w,height:l.height,rx:7,fill:'var(--bg)',stroke:st.stroke,'stroke-width':1},t);
+   el('text',{x:l.x+w/2,y:l.y+l.height-3.5,'text-anchor':'middle','font-size':10,fill:'var(--fg)'},t).textContent=e.label;E.push([t,e])}});
+ r.children.forEach(c=>{const b=g.blocks[+c.id],gr=el('g',{transform:`translate(${c.x},${c.y})`,'data-id':c.id},gg);NG.set(c.id,gr);
+  if(b.kind==='entry'||b.kind==='exit'){
+   el('rect',{width:c.width,height:c.height,rx:13,fill:'var(--panel)',stroke:'var(--ext-s)'},gr);
+   el('text',{x:c.width/2,y:17,'text-anchor':'middle','font-size':11,fill:'var(--muted)'},gr).textContent=b.kind==='entry'?'start':'end';return}
+  if(!rows.get(b.id).length){
+   el('circle',{cx:8,cy:8,r:7,fill:b.unreachable?'var(--ext)':'var(--box)',stroke:b.unreachable?'var(--ext-s)':'var(--box-s)','stroke-width':1.2,'stroke-dasharray':b.unreachable?'3 2':'none'},gr);
+   el('title',{},gr).textContent='join: paths meet here';return}
+  const branch=b.kind==='branch'||b.kind==='loop';
+  el('rect',{class:'box',width:c.width,height:c.height,rx:5,fill:b.unreachable?'var(--ext)':'var(--box)',stroke:b.unreachable?'var(--ext-s)':'var(--box-s)','stroke-width':branch?2.4:1.2,'stroke-dasharray':b.unreachable?'4 3':'none'},gr);
+  rows.get(b.id).forEach((row,k)=>{const y=14+k*LH;
+   if(row.c==='rule'){el('line',{x1:PAD/2,x2:c.width-PAD/2,y1:y-9,y2:y-9,stroke:'var(--box-s)','stroke-width':.8},gr);return}
+   const a={x:PAD,y,'font-size':11,fill:row.c==='muted'?'var(--muted)':'var(--fg)','xml:space':'preserve'};
+   if(row.c==='muted')a['font-style']='italic';
+   if(row.callee)a['data-callee']=row.callee;
+   const t=el('text',a,gr);t.textContent=row.t;t.style.whiteSpace='pre'});
+  gr.addEventListener('pointerenter',()=>highlight(c.id));
+  gr.addEventListener('pointerleave',()=>highlight(null))});
+ function highlight(id){E.forEach(([p,e])=>{const hit=id!==null&&(String(e.from)===id||String(e.to)===id);p.classList.toggle('dim',id!==null&&!hit)});
+  NG.forEach((x,k)=>{const near=id!==null&&(k===id||g.edges.some(e=>(String(e.from)===id&&String(e.to)===k)||(String(e.to)===id&&String(e.from)===k)));x.classList.toggle('dim',id!==null&&!near)})}
+ gg.dataset.w=r.width;gg.dataset.h=r.height;fit();updateHint();document.body.dataset.ready='1'}
+// ---- pan, zoom and clicks
+const V=$('v'),G0=$('g');let T={x:0,y:0,k:1};
+const apply=()=>G0.setAttribute('transform',`translate(${T.x},${T.y}) scale(${T.k})`);
+function fit(){const w=+G0.dataset.w+40,h=+G0.dataset.h+40,r=V.getBoundingClientRect();T.k=Math.min(r.width/w,r.height/h,1.5);T.x=(r.width-w*T.k)/2+20*T.k;T.y=(r.height-h*T.k)/2+20*T.k;apply()}
+V.addEventListener('wheel',e=>{e.preventDefault();const r=V.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top,f=Math.exp(-e.deltaY*.0015);T.x=px-(px-T.x)*f;T.y=py-(py-T.y)*f;T.k*=f;apply()},{passive:false});
+// A press that moves more than a few pixels pans; one that does not is a click.
+let down=null;
+V.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY,t:e.target,ox:T.x,oy:T.y,moved:false};try{V.setPointerCapture(e.pointerId)}catch(_){}});
+V.addEventListener('pointermove',e=>{if(!down)return;const dx=e.clientX-down.x,dy=e.clientY-down.y;
+ if(!down.moved&&Math.hypot(dx,dy)<=4)return;down.moved=true;V.style.cursor='grabbing';T.x=down.ox+dx;T.y=down.oy+dy;apply()});
+V.addEventListener('pointerup',()=>{const d=down;down=null;V.style.cursor='grab';if(d&&!d.moved)onClick(d.t);else if(d&&d.moved)disarm()});
+function open(id,remember){if(remember&&fid)history.push(fid);fid=id;render()}
+function onClick(t){
+ const call=t.closest&&t.closest('[data-callee]');
+ if(call){const id=call.dataset.callee;if(armed===id)return open(id,true);armed=id;return updateHint()}
+ disarm()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')disarm()});
+$('fit').onclick=fit;
+$('back').onclick=()=>{if(history.length)open(history.pop(),false)};
+$('dir').onclick=function(){dir=dir==='DOWN'?'RIGHT':'DOWN';this.textContent='Direction: '+(dir==='DOWN'?'down':'right');render()};
+$('fn').onchange=()=>{history=[];open($('fn').value,false)};
+$('minc').onchange=render;$('k-private').onchange=render;
+const h=new URLSearchParams(location.hash.slice(1));
+if(CONFIG.showPrivate)$('k-private').checked=true;
+if(h.get('private')==='1')$('k-private').checked=true;
+if(h.get('minc'))$('minc').value=h.get('minc');
+if(h.get('dir')==='right'){dir='RIGHT';$('dir').textContent='Direction: right'}
+if(h.get('function'))fid=h.get('function');
+window.addEventListener('resize',fit);
+window.__flow={D,FLOW,get state(){return{fid,armed,history}}};
+render();
+</script></body></html>
