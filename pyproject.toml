@@ -41,8 +41,6 @@ python-source = "src"
 # The wheel carries the Rust `chartedcode` executable (installed as a script) next to the Python package.
 bindings = "bin"
 module-name = "chartedcode"
-# Bytecode from a development tree does not belong in a wheel.
-exclude = ["**/__pycache__/**", "**/*.py[cod]"]
 # `chartedcode-py`: a Python script installed beside the executable, which maturin cannot declare as an entry point.
 data = "rust/python-data"
 include = [
