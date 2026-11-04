@@ -4,8 +4,10 @@
 <style>
 :root{--bg:#fff;--fg:#111827;--muted:#6b7280;--box:#eef2ff;--box-s:#4f46e5;--ext:#f9fafb;--ext-s:#9ca3af;--panel:#f3f4f6;
 --ev-res:#374151;--ev-uni:#b45309;--ev-str:#7c3aed;--ev-ext:#9ca3af}
-@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--box:#1e293b;--box-s:#818cf8;--ext:#0f172a;--ext-s:#64748b;--panel:#1e293b;
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--box:#1e293b;--box-s:#818cf8;--ext:#0f172a;--ext-s:#64748b;--panel:#1e293b;
 --ev-res:#cbd5e1;--ev-uni:#fbbf24;--ev-str:#a78bfa;--ev-ext:#64748b}}
+:root[data-theme="dark"]{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--box:#1e293b;--box-s:#818cf8;--ext:#0f172a;--ext-s:#64748b;--panel:#1e293b;
+--ev-res:#cbd5e1;--ev-uni:#fbbf24;--ev-str:#a78bfa;--ev-ext:#64748b}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
 header{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;padding:8px 16px;background:var(--panel)}
 header h1{font-size:15px;margin:0}header .m{color:var(--muted)}
@@ -14,11 +16,13 @@ label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
 .leg{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;color:var(--muted);font-size:12px;width:100%}
 .leg b{color:var(--fg);font-weight:600}
 .sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
-#v{display:block;width:100%;height:calc(100% - 96px);cursor:grab;touch-action:none}
-@media (max-width:700px){#v{height:calc(100% - 150px)}}
+body{display:flex;flex-direction:column}
+header{flex:none}
+#v{display:block;flex:1;min-height:0;width:100%;cursor:grab;touch-action:none}
 text{font-family:ui-monospace,Menlo,monospace}
 .dim{opacity:.1}
-</style></head><body>
+html.embed header{display:none}
+</style><script>/* Host options in the URL fragment: embed=1 hides the header and legend; theme=light|dark overrides the system setting. */(()=>{const apply=()=>{const q=new URLSearchParams(location.hash.slice(1)),r=document.documentElement;r.classList.toggle('embed',q.get('embed')==='1');const t=q.get('theme');if(t==='light'||t==='dark')r.dataset.theme=t;else delete r.dataset.theme};apply();addEventListener('hashchange',apply)})();</script></head><body>
 <header><h1>@@TITLE@@</h1><span class="m" id="stats"></span>
 <label><input type="checkbox" id="k-inherits" checked> inheritance</label>
 <label><input type="checkbox" id="k-implements" checked> implements (Protocol)</label>

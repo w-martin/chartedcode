@@ -1,6 +1,7 @@
 //! chartedcode: diagrams for Python projects, drawn as self-contained HTML.
 
 mod analysis;
+mod bundle;
 mod calls;
 mod cfg;
 mod classes;
@@ -13,6 +14,7 @@ mod render;
 mod resolve;
 
 pub use analysis::{analyze, Error, Options};
+pub use bundle::{write_bundle, Manifest, ManifestFile, Summary, MANIFEST_VERSION};
 pub use model::{
     Analysis, AttrNode, CallEdge, CallStats, ClassEdge, ClassNode, FlowBlock, FlowCall, FlowEdge,
     FlowGraph, FlowLine, FlowTarget, FunctionNode, UnresolvedRef, SCHEMA_VERSION,

@@ -34,7 +34,7 @@ CHROME = find_chrome()
 requires_chrome = pytest.mark.skipif(CHROME is None, reason="no Chrome installed (set CHROME to its path)")
 
 
-def drive(page: Path, script: str, fragment: str = "", budget_ms: int = 120_000) -> Any:  # noqa: ANN401
+def drive(page: Path, script: str, fragment: str = "", budget_ms: int = 120_000, early: str = "") -> Any:  # noqa: ANN401
     """Open `page` in a headless Chrome, run `script` in it, and return the JSON the script leaves in `#log`.
 
     Args:
@@ -42,14 +42,16 @@ def drive(page: Path, script: str, fragment: str = "", budget_ms: int = 120_000)
         script: JavaScript that ends by appending `<pre id="log">` holding a JSON document.
         fragment: The URL fragment to open the page with (it sets the initial state).
         budget_ms: How much virtual time the page may use.
+        early: JavaScript to run before any script of the page does, for recording what the page does.
 
     Returns:
         The parsed JSON.
     """
     driven = page.with_name(f"_driven_{page.name}")
-    driven.write_text(
-        page.read_text(encoding="utf-8").replace("</body>", f"<script>{script}</script></body>"), encoding="utf-8"
-    )
+    text = page.read_text(encoding="utf-8").replace("</body>", f"<script>{script}</script></body>")
+    if early:
+        text = text.replace("<head>", f"<head><script>{early}</script>", 1)
+    driven.write_text(text, encoding="utf-8")
     try:
         completed = subprocess.run(
             [

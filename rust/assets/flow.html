@@ -4,8 +4,10 @@
 <style>
 :root{--bg:#fff;--fg:#111827;--muted:#6b7280;--box:#eef2ff;--box-s:#4f46e5;--ext:#f9fafb;--ext-s:#9ca3af;--panel:#f3f4f6;
 --e-norm:#374151;--e-loop:#b45309;--e-exc:#7c3aed}
-@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--box:#1e293b;--box-s:#818cf8;--ext:#0f172a;--ext-s:#64748b;--panel:#1e293b;
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--box:#1e293b;--box-s:#818cf8;--ext:#0f172a;--ext-s:#64748b;--panel:#1e293b;
 --e-norm:#cbd5e1;--e-loop:#fbbf24;--e-exc:#a78bfa}}
+:root[data-theme="dark"]{--bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;--box:#1e293b;--box-s:#818cf8;--ext:#0f172a;--ext-s:#64748b;--panel:#1e293b;
+--e-norm:#cbd5e1;--e-loop:#fbbf24;--e-exc:#a78bfa}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
 body{display:flex;flex-direction:column}
 header{flex:none;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:8px 16px;background:var(--panel)}
@@ -22,7 +24,8 @@ text{font-family:ui-monospace,Menlo,monospace}
 .armed rect.box{stroke:var(--e-loop);stroke-width:2.6;stroke-dasharray:5 3}
 [data-callee]{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
 .armedcall{fill:var(--e-loop)!important;font-weight:700}
-</style></head><body>
+html.embed header{display:none}
+</style><script>/* Host options in the URL fragment: embed=1 hides the header and legend; theme=light|dark overrides the system setting. */(()=>{const apply=()=>{const q=new URLSearchParams(location.hash.slice(1)),r=document.documentElement;r.classList.toggle('embed',q.get('embed')==='1');const t=q.get('theme');if(t==='light'||t==='dark')r.dataset.theme=t;else delete r.dataset.theme};apply();addEventListener('hashchange',apply)})();</script></head><body>
 <header><h1>@@TITLE@@</h1><span class="m" id="stats" title="Complexity is the number of decision points plus one: if/elif, loops, except handlers, case arms and asserts. Boolean operators and conditional expressions are not counted."></span>
 <label>Function <select id="fn"></select></label>
 <label title="Only list functions with at least this complexity. The function being shown is always listed.">list <select id="minc"><option value="0">all functions</option><option value="3">complexity ≥ 3</option><option value="5">complexity ≥ 5</option><option value="8">complexity ≥ 8</option><option value="12">complexity ≥ 12</option></select></label>

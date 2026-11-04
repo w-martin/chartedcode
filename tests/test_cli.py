@@ -1,5 +1,6 @@
 """The command line end to end: the installed executable, the in-process extension, and their agreement."""
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -98,3 +99,36 @@ def test_both_entry_points_start_the_program(arguments: list[str] | None) -> Non
     done = subprocess.run([*command, "--version"], capture_output=True, text=True, check=False)
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip() == f"chartedcode {version('chartedcode')}"
+
+
+def test_all_writes_a_set_that_verifies_and_is_the_same_from_the_extension(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fixtures: Path
+) -> None:
+    """The manifest's sizes and hashes are right, and the extension writes the same bytes as the executable."""
+    written: list[dict[str, bytes]] = []
+    for index, in_process in enumerate(("0", "1")):
+        monkeypatch.setenv(IN_PROCESS_VARIABLE, in_process)
+        out = tmp_path / f"out{index}"
+        done = run_binary(["all", str(fixtures / "calls"), "--no-gitignore", "-o", str(out)], capture=True)
+        assert done.returncode == 0, done.stderr
+        written.append({entry.name: entry.read_bytes() for entry in out.iterdir()})
+    assert written[0] == written[1]
+    assert sorted(written[0]) == ["analysis.json", "calls.html", "classes.html", "flow.html", "manifest.json"]
+    manifest = json.loads(written[0]["manifest.json"])
+    assert manifest["tool"] == "chartedcode"
+    assert manifest["version"] == version("chartedcode")
+    for entry in manifest["files"]:
+        data = written[0][entry["name"]]
+        assert entry["bytes"] == len(data)
+        assert entry["sha256"] == hashlib.sha256(data).hexdigest()
+
+
+def test_all_without_an_output_directory_writes_beside_the_current_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fixtures: Path
+) -> None:
+    """The default is `<project>-chartedcode` in the current directory."""
+    monkeypatch.chdir(tmp_path)
+    done = run_binary(["all", str(fixtures / "calls"), "--no-gitignore"], capture=True)
+    assert done.returncode == 0, done.stderr
+    assert (tmp_path / "calls-chartedcode" / "manifest.json").is_file()
+    assert "calls-chartedcode" in done.stdout

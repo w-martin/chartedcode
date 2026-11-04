@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
-use crate::{analyze, render_html, Options, RenderOptions, View};
+use crate::{analyze, render_html, write_bundle, Options, RenderOptions, View};
 
 #[derive(Parser)]
 #[command(
@@ -26,6 +26,8 @@ enum Command {
     Calls(Common),
     /// Control-flow graph of each function: branches, loops and handlers, with the calls in each block
     Flow(FlowArgs),
+    /// Every diagram and the analysis as JSON, in one directory with a manifest of what was written
+    All(AllArgs),
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -65,6 +67,27 @@ struct FlowArgs {
     min_complexity: usize,
 }
 
+#[derive(Args)]
+struct AllArgs {
+    /// A Python file or a directory of Python files
+    path: PathBuf,
+    /// The directory to write into, created if needed (default: `<name>-chartedcode` in the current directory)
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+    /// Start the pages with private names (a single leading underscore) shown
+    #[arg(long)]
+    include_private: bool,
+    /// Do not skip files matched by .gitignore
+    #[arg(long)]
+    no_gitignore: bool,
+    /// Leave the source text out of the flow diagrams and the JSON (blocks show only line numbers)
+    #[arg(long)]
+    no_source: bool,
+    /// Only draw functions of at least this complexity in the flow page; the JSON keeps them all
+    #[arg(long, default_value_t = 0)]
+    min_complexity: usize,
+}
+
 /// The settings a view needs beyond the common ones.
 struct Request {
     view: View,
@@ -84,6 +107,15 @@ pub fn execute(argv: Vec<String>, out: &mut dyn Write, err: &mut dyn Write) -> u
         }
     };
     let request = match cli.command {
+        Command::All(args) => {
+            return match run_all(&args, out) {
+                Ok(()) => 0,
+                Err(message) => {
+                    let _ = writeln!(err, "chartedcode: {message}");
+                    1
+                }
+            };
+        }
         Command::Classes(common) => Request {
             view: View::Classes,
             common,
@@ -110,6 +142,37 @@ pub fn execute(argv: Vec<String>, out: &mut dyn Write, err: &mut dyn Write) -> u
             1
         }
     }
+}
+
+fn run_all(args: &AllArgs, out: &mut dyn Write) -> Result<(), String> {
+    let analysis = analyze(
+        &args.path,
+        &Options {
+            respect_gitignore: !args.no_gitignore,
+            control_flow: true,
+            include_source: !args.no_source,
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    let dir = args
+        .output
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(format!("{}-chartedcode", analysis.root)));
+    let manifest = write_bundle(
+        &analysis,
+        &dir,
+        &RenderOptions {
+            show_private: args.include_private,
+            min_complexity: args.min_complexity,
+        },
+    )?;
+    writeln!(
+        out,
+        "wrote {} files and manifest.json to {}",
+        manifest.files.len(),
+        dir.display()
+    )
+    .map_err(|e| e.to_string())
 }
 
 fn run_view(request: &Request, out: &mut dyn Write) -> Result<(), String> {

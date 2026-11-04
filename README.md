@@ -9,6 +9,7 @@ $ chartedcode classes src/        # class diagram
 $ chartedcode calls src/          # call graph
 $ chartedcode flow src/           # control-flow graph of each function
 wrote src-flow.chartedcode.html
+$ chartedcode all src/ -o out/    # all of them, plus the analysis as JSON and a manifest
 ```
 
 ## Install
@@ -49,6 +50,32 @@ The colour of an edge says how sure the tool is: resolved by name, import, `self
 The control-flow graph of each function (and of a module's top-level code): basic blocks with their source lines, edges labelled with when they are taken (`true`, `false`, `next item`, `loop`, `break`, `exception`, `return`, ...), unreachable code marked, and a complexity number (decision points plus one). The calls in each block carry the same step numbers as the call graph, and a call that has a flow of its own can be opened with two clicks.
 
 Approximations, so the diagram can be read correctly: any statement in a `try` body may raise (one `exception` edge from the body to each handler), context managers do not branch, and boolean operators, conditional expressions and comprehensions do not split a block.
+
+## Every diagram at once, for CI
+
+```console
+$ chartedcode all src/ -o out/
+wrote 4 files and manifest.json to out/
+```
+
+`out/` holds `classes.html`, `calls.html`, `flow.html`, `analysis.json` and `manifest.json`. The names are fixed, so whatever collects them does not need to know the project. The manifest lists each file with its size and SHA-256, the tool and schema versions, and some totals (files analysed, classes, functions, call edges, untraced calls, the highest complexity); it has no timestamps, so the same input gives a byte-identical directory. `analysis.json` is the complete analysis, including control flow, whatever `--min-complexity` does to the flow page.
+
+## Embedding the pages
+
+Each page is one file with no external requests, no cookies and no browser storage, and it renders inside `<iframe sandbox="allow-scripts">`. A host chooses how a page opens through the URL fragment (`page.html#embed=1&theme=dark`). A page reads `embed` and `theme` again if the fragment changes after load; the other options are read once, when the page opens. There is no other way to drive a page from outside.
+
+| Option | Pages | Effect |
+| --- | --- | --- |
+| `embed=1` | all | hide the header and legend, so the diagram fills the frame (the status line and, in the call graph, the order-of-calls panel stay) |
+| `theme=light` or `theme=dark` | all | use these colours whatever the system setting is |
+| `kinds=inherits,implements,composes` | classes | which relationships are shown at first |
+| `view=graph\|exec\|acyclic`, `gran=function\|class\|module` | calls | the view and its granularity |
+| `focus=<function id>`, `depth=N` | calls | the function to focus on and how far to follow its calls |
+| `ext=1`, `untraced=1`, `private=1`, `mincalls=N`, `dir=down` | calls | external calls, untraced-call counts, private names, the focus-list filter, the layout direction |
+| `function=<function id>` | flow | the function to show |
+| `minc=N`, `private=1`, `dir=right` | flow | the complexity filter for the function list, private names, the layout direction |
+
+Function ids are the `id` fields of `functions` in `analysis.json`, such as `pkg/app::Service.run`.
 
 ## What it does not follow
 
